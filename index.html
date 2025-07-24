@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Magnoquill Driftflare Quiverbloom</title>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 20px; 
+            background: #111; 
+            font-family: monospace; 
+            color: white;
+        }
+        canvas { 
+            border: 1px solid #333; 
+            display: block; 
+            margin: 20px auto;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px;
+        }
+        .stats {
+            text-align: center;
+            margin: 10px;
+            font-size: 14px;
+        }
+        input[type="range"] {
+            width: 200px;
+            margin: 0 10px;
+        }
+        button {
+            background: #333;
+            color: white;
+            border: 1px solid #666;
+            padding: 8px 16px;
+            margin: 0 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #555;
+        }
+        
+        .fullscreen-container {
+            position: relative;
+        }
+        
+        .fullscreen-container:-webkit-full-screen {
+            width: 100vw;
+            height: 100vh;
+            background: #111;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .fullscreen-container:-moz-full-screen {
+            width: 100vw;
+            height: 100vh;
+            background: #111;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .fullscreen-container:fullscreen {
+            width: 100vw;
+            height: 100vh;
+            background: #111;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .fullscreen-container:-webkit-full-screen canvas {
+            border: none;
+            margin: 0;
+        }
+        
+        .fullscreen-container:-moz-full-screen canvas {
+            border: none;
+            margin: 0;
+        }
+        
+        .fullscreen-container:fullscreen canvas {
+            border: none;
+            margin: 0;
+        }
+
+        .title {
+            text-align: center;
+            font-size: 28px;
+            font-weight: bold;
+            margin: 20px 0;
+            letter-spacing: 2px;
+            transition: all 0.5s ease;
+        }
+        
+        .title.colorful {
+            background: linear-gradient(45deg, #00ffff, #ff00ff, #ffff00, #00ff00);
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientShift 3s ease-in-out infinite;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+        
+        .title.monochrome {
+            color: #666;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+        }
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+    </style>
+</head>
+<body>
+    <div div class="title colorful" id="titleElement">
+        Magnoquill Driftflare Quiverbloom
+    </div>
+
+    <div class="stats">
+        <div id="fps">FPS: 0</div>
+        <div id="pointCount">Points: 15000</div>
+    </div>
+    
+    <div class="fullscreen-container" id="fullscreenContainer">
+        <canvas id="canvas" width="800" height="800"></canvas>
+    </div>
+    
+    <div class="controls">
+        <div>
+            <label>Points: </label>
+            <input type="range" id="pointSlider" min="1000" max="100000" value="15000" step="1000">
+            <span id="pointValue">15000</span>
+        </div>
+        <div>
+            <label>Speed: </label>
+            <input type="range" id="speedSlider" min="0.01" max="5.0" value="1.0" step="0.01">
+            <span id="speedValue">1.0</span>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" id="colorToggle" checked>
+                Enable Colors
+            </label>
+            <label>
+                <input type="checkbox" id="blendToggle" checked>
+                Enable Additive Blending
+            </label>
+        </div>
+        <div>
+            <button onclick="toggleAnimation()">Pause/Resume</button>
+            <button onclick="resetTime()">Reset</button>
+            <button onclick="toggleFullscreen()">Fullscreen</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const fullscreenContainer = document.getElementById('fullscreenContainer');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        
+        if (!gl) {
+            alert('WebGL not supported');
+            throw new Error('WebGL not supported');
+        }
+
+        const vertexShaderSource = `
+            attribute float a_index;
+            uniform float u_time;
+            uniform float u_numPoints;
+            uniform vec2 u_resolution;
+            uniform bool u_colorMode;
+            
+            varying float v_brightness;
+            varying vec3 v_color;
+            
+            void main() {
+                float x = 10000.0 - a_index * (10000.0 / u_numPoints);
+                float y = x / 235.0;
+                float t = u_time * 3.14159 / 240.0;
+                
+                // Parametric calculations (same as original)
+                float k = (4.0 + sin(x / 11.0 + t * 8.0)) * cos(x / 14.0);
+                float e = y / 8.0 - 19.0;
+                float d = sqrt(k * k + e * e) + sin(y / 9.0 + t * 2.0);
+                float q = 2.0 * sin(k * 2.0) + sin(y / 17.0) * k * (9.0 + 2.0 * sin(y - d * 3.0));
+                float c = d * d / 49.0 - t;
+                
+                // Calculate creature point position
+                float px = q + 50.0 * cos(c) + 200.0;
+                float py = q * sin(c) + d * 39.0 - 440.0;
+                
+                // Convert to normalized device coordinates
+                vec2 screenPos = vec2(px, 400.0 - py); // Flip Y
+                vec2 ndc = (screenPos / 400.0) * 2.0 - 1.0;
+                
+                gl_Position = vec4(ndc, 0.0, 1.0);
+                
+                // Calculate point size and brightness based on animation
+                float animBrightness = abs(sin(t * 2.0 + x * 0.001)) + 0.5;
+                gl_PointSize = 2.0 + animBrightness * 3.0;
+                v_brightness = animBrightness * 0.376;
+                
+                // Calculate cool colors based on position and time
+                if (u_colorMode) {
+                    // Create dynamic color based on multiple factors
+                    float colorTime = t * 0.5;
+                    float colorPhase1 = sin(x * 0.0001 + colorTime) * 0.5 + 0.5;
+                    float colorPhase2 = sin(y * 0.01 + colorTime * 1.3) * 0.5 + 0.5;
+                    float colorPhase3 = sin(d * 0.1 + colorTime * 0.7) * 0.5 + 0.5;
+                    
+                    // HSV-like color generation for smooth transitions
+                    float hue = mod(colorPhase1 * 360.0 + colorTime * 20.0, 360.0);
+                    float sat = 0.6 + colorPhase2 * 0.4;
+                    float val = 0.8 + colorPhase3 * 0.2;
+                    
+                    // Convert HSV to RGB (simplified)
+                    float c = val * sat;
+                    float hPrime = hue / 60.0;
+                    float hMod = mod(hPrime, 2.0) - 1.0;
+                    float x = c * (1.0 - abs(hMod));
+                    
+                    vec3 rgb;
+                    if (hPrime < 1.0) rgb = vec3(c, x, 0.0);
+                    else if (hPrime < 2.0) rgb = vec3(x, c, 0.0);
+                    else if (hPrime < 3.0) rgb = vec3(0.0, c, x);
+                    else if (hPrime < 4.0) rgb = vec3(0.0, x, c);
+                    else if (hPrime < 5.0) rgb = vec3(x, 0.0, c);
+                    else rgb = vec3(c, 0.0, x);
+                    
+                    float m = val - c;
+                    v_color = rgb + vec3(m);
+                    
+                    // Add some sparkle effect
+                    float sparkle = sin(x * 0.01 + t * 10.0) * sin(y * 0.02 + t * 7.0);
+                    if (sparkle > 0.95) {
+                        v_color = mix(v_color, vec3(1.0, 1.0, 0.8), 0.3);
+                    }
+                } else {
+                    v_color = vec3(1.0); // White when colors are off
+                }
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision mediump float;
+            varying float v_brightness;
+            varying vec3 v_color;
+            
+            void main() {
+                // Create circular points with smooth falloff
+                vec2 center = gl_PointCoord - 0.5;
+                float dist = length(center);
+                
+                if (dist > 0.5) discard;
+                
+                float alpha = 1.0 - smoothstep(0.0, 0.5, dist);
+                alpha *= alpha; // Quadratic falloff for glow effect
+                
+                vec3 color = v_color * v_brightness * alpha;
+                gl_FragColor = vec4(color, alpha);
+            }
+        `;
+
+        function createShader(type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            
+            return shader;
+        }
+
+        function createProgram(vertexShader, fragmentShader) {
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+            
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program linking error:', gl.getProgramInfoLog(program));
+                gl.deleteProgram(program);
+                return null;
+            }
+            
+            return program;
+        }
+
+        // Initialize shaders
+        const vertexShader = createShader(gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+        const program = createProgram(vertexShader, fragmentShader);
+
+        // Get attribute and uniform locations
+        const a_index = gl.getAttribLocation(program, 'a_index');
+        const u_time = gl.getUniformLocation(program, 'u_time');
+        const u_numPoints = gl.getUniformLocation(program, 'u_numPoints');
+        const u_resolution = gl.getUniformLocation(program, 'u_resolution');
+        const u_colorMode = gl.getUniformLocation(program, 'u_colorMode');
+
+        // Create buffer for point indices
+        const indexBuffer = gl.createBuffer();
+        let currentPointCount = 15000;
+        let indexData = new Float32Array(currentPointCount);
+
+        function updatePointBuffer(numPoints) {
+            currentPointCount = numPoints;
+            indexData = new Float32Array(numPoints);
+            for (let i = 0; i < numPoints; i++) {
+                indexData[i] = i;
+            }
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, indexData, gl.DYNAMIC_DRAW);
+        }
+
+        updatePointBuffer(currentPointCount);
+
+        // Animation variables
+        let startTime = Date.now();
+        let animationSpeed = 1.0;
+        let isPaused = false;
+        let pauseStartTime = 0;
+        let totalPausedDuration = 0;
+        let colorMode = true;
+        let blendEnabled = true;
+        let isFullscreen = false;
+
+        // FPS tracking
+        let frameCount = 0;
+        let lastFpsTime = Date.now();
+        let fps = 0;
+
+        // UI Controls
+        const pointSlider = document.getElementById('pointSlider');
+        const pointValue = document.getElementById('pointValue');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const colorToggle = document.getElementById('colorToggle');
+        const blendToggle = document.getElementById('blendToggle');
+
+        pointSlider.addEventListener('input', (e) => {
+            const newCount = parseInt(e.target.value);
+            pointValue.textContent = newCount;
+            updatePointBuffer(newCount);
+            document.getElementById('pointCount').textContent = `Points: ${newCount}`;
+        });
+
+        speedSlider.addEventListener('input', (e) => {
+            animationSpeed = parseFloat(e.target.value);
+            speedValue.textContent = animationSpeed.toFixed(1);
+        });
+
+         colorToggle.addEventListener('change', (e) => {
+            colorMode = e.target.checked;
+            
+            // Update title styling too
+            if (colorMode) {
+                titleElement.className = 'title colorful';
+            } else {
+                titleElement.className = 'title monochrome';
+            }
+        });
+
+        blendToggle.addEventListener('change', (e) => {
+            blendEnabled = e.target.checked;
+        });
+
+        function toggleAnimation() {
+            if (isPaused) {
+                // add the paused duration to our total
+                totalPausedDuration += Date.now() - pauseStartTime;
+                isPaused = false;
+            } else {
+                // record when we paused
+                pauseStartTime = Date.now();
+                isPaused = true;
+            }
+        }
+
+        function resetTime() {
+            startTime = Date.now();
+            totalPausedDuration = 0;
+            isPaused = false;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                // Enter fullscreen
+                fullscreenContainer.requestFullscreen().then(() => {
+                    isFullscreen = true;
+                    resizeCanvas();
+                }).catch(err => {
+                    console.error('Error attempting to enable fullscreen:', err);
+                });
+            } else {
+                // Exit fullscreen
+                document.exitFullscreen().then(() => {
+                    isFullscreen = false;
+                    resizeCanvas();
+                }).catch(err => {
+                    console.error('Error attempting to exit fullscreen:', err);
+                });
+            }
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            isFullscreen = !!document.fullscreenElement;
+            resizeCanvas();
+        });
+
+        function resizeCanvas() {
+            if (isFullscreen) {
+                canvas.width = window.screen.width;
+                canvas.height = window.screen.height;
+            } else {
+                canvas.width = 800;
+                canvas.height = 800;
+            }
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+
+        window.addEventListener('resize', () => {
+            if (isFullscreen) {
+                resizeCanvas();
+            }
+        });
+
+        function render() {
+            // Calculate time subtract total paused duration from elapsed time
+            let currentTime;
+            if (isPaused) {
+                // if paused use the time at which we paused
+                currentTime = (pauseStartTime - startTime - totalPausedDuration) * animationSpeed / 10;
+            } else {
+                // when running use current time minus all paused durations
+                currentTime = (Date.now() - startTime - totalPausedDuration) * animationSpeed / 10;
+            }
+
+            // Update FPS
+            frameCount++;
+            const now = Date.now();
+            if (now - lastFpsTime >= 1000) {
+                fps = Math.round(frameCount * 1000 / (now - lastFpsTime));
+                document.getElementById('fps').textContent = `FPS: ${fps}`;
+                frameCount = 0;
+                lastFpsTime = now;
+            }
+
+            // Set viewport and clear
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.clearColor(0.035, 0.035, 0.035, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            if (blendEnabled) {
+                // Enable blending for additive effect
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+            } else {
+                // Disable blending for solid points
+                gl.disable(gl.BLEND);
+            }
+
+            // Use shader program
+            gl.useProgram(program);
+
+            // Set uniforms
+            gl.uniform1f(u_time, currentTime);
+            gl.uniform1f(u_numPoints, currentPointCount);
+            gl.uniform2f(u_resolution, canvas.width, canvas.height);
+            gl.uniform1i(u_colorMode, colorMode ? 1 : 0);
+
+            // Bind buffer and set attribute
+            gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
+            gl.enableVertexAttribArray(a_index);
+            gl.vertexAttribPointer(a_index, 1, gl.FLOAT, false, 0, 0);
+
+            // Draw points
+            gl.drawArrays(gl.POINTS, 0, currentPointCount);
+
+            requestAnimationFrame(render);
+        }
+
+        // Start rendering
+        render();
+
+        console.log('WebGL Point Renderer initialized');
+        console.log(`Rendering ${currentPointCount} points`);
+        console.log('Use controls to adjust point count and animation speed');
+        console.log('Press F11 or use the Fullscreen button for fullscreen mode');
+    </script>
+</body>
+</html>
