@@ -2,6 +2,9 @@
 
 A high-performance WebGL implementation of the mesmerizing parametric creature "Magnoquill Driftflare Quiverbloom" with dynamic rainbow colors and smooth 60 FPS rendering of 15,000+ points.
 
+![Magnoquill-Driftflare-Quiverbloom Demo](parametric_creature.gif)
+
+
 [LIVE DEMO](https://rage997.github.io/Magnoquill-Driftflare-Quiverbloom/)
 
 ## Original creator:
